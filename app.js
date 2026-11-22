@@ -62,7 +62,7 @@ function orderTotal() {
 function updateTotal() {
   const value = selections.size ? real.format(orderTotal()) : "–";
   if (total.value !== value) total.value = value;
-  next.disabled = !selections.size || activeStep === lastStep;
+  next.disabled = !selections.size;
 }
 
 function choiceGroup(label) {
@@ -164,6 +164,30 @@ function renderSauces() {
   body.append(extras);
 }
 
+function summarizeOptions(options) {
+  return Array.from(options).join(", ") || "Nenhum";
+}
+
+function summaryRows() {
+  return [
+    ["Tamanho", selections.size.label + " (" + real.format(selections.size.price) + ")"],
+    ["Frutas", selections.fruits.size ? summarizeOptions(selections.fruits) : "Nenhuma"],
+    ["Acompanhamentos", summarizeOptions(selections.toppings)],
+    ["Coberturas", selections.sauces.size ? summarizeOptions(selections.sauces) : "Nenhuma"],
+    ["Adicional", selections.nutella ? "Nutella (+ " + real.format(nutella.price) + ")" : "Nenhum"],
+  ];
+}
+
+function renderSummary() {
+  const list = node("dl", "summary");
+  for (const [label, value] of summaryRows()) {
+    const row = node("div");
+    row.append(node("dt", null, label), node("dd", null, value));
+    list.append(row);
+  }
+  body.append(list);
+}
+
 function renderStep(moveFocus = false) {
   const step = steps[activeStep];
   layout.dataset.step = activeStep;
@@ -172,7 +196,7 @@ function renderStep(moveFocus = false) {
   description.textContent = step.description || "";
   description.hidden = !step.description;
   back.hidden = activeStep === 0;
-  next.textContent = activeStep === lastStep - 1 ? "Ver resumo" : "Continuar";
+  next.textContent = activeStep === lastStep ? "Copiar pedido" : activeStep === lastStep - 1 ? "Ver resumo" : "Continuar";
   feedback.textContent = "";
   manualCopy.hidden = true;
 
@@ -189,12 +213,34 @@ function renderStep(moveFocus = false) {
     case 1: renderOptions("fruits", "Frutas", fruits, selections.fruits, 2); break;
     case 2: renderOptions("toppings", "Acompanhamentos", toppings, selections.toppings); break;
     case 3: renderSauces(); break;
+    case 4: renderSummary(); break;
   }
 
   updateTotal();
   if (moveFocus) {
     title.focus({ preventScroll: true });
     if (mobile.matches) window.scrollTo(0, 0);
+  }
+}
+
+async function copyOrder() {
+  const rows = summaryRows().map(([label, value]) => label + ": " + value);
+  const text = ["Pedido • Açaí da Praia", ...rows, "Total: " + real.format(orderTotal())].join("\n");
+  feedback.textContent = "";
+  try {
+    await navigator.clipboard.writeText(text);
+    manualCopy.hidden = true;
+    feedback.textContent = "Pedido copiado.";
+  } catch {
+    manualCopy.hidden = false;
+    orderText.value = text;
+    orderText.focus();
+    orderText.select();
+    if (document.execCommand("copy")) {
+      next.focus();
+      manualCopy.hidden = true;
+      feedback.textContent = "Pedido copiado.";
+    }
   }
 }
 
@@ -208,7 +254,7 @@ back.addEventListener("click", () => {
 next.addEventListener("click", () => {
   if (!selections.size) return;
   if (activeStep === lastStep) {
-    return;
+    void copyOrder();
   } else {
     activeStep += 1;
     renderStep(true);
